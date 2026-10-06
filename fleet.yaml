@@ -1,0 +1,3 @@
+defaultNamespace: mcp-demo
+kustomize:
+  dir: .
