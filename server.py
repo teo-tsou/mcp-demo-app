@@ -5,11 +5,18 @@ Streamable HTTP (MCP 2025-06-18), JSON-RPC 2.0, Python standard library only. It
 mcp-manifest.json, the file the platform reads from this repository at the signed commit it deploys: it offers the
 assistant only what that signed file declares, and stops using this server if what it serves ever differs.
 
+Only the platform may call it: every request must carry the platform's token (header X-Platform-Token), signed by the
+hub's key (ECDSA P-256, PLATFORM_KEY = base64 of its PEM, delivered by the deployer through Fleet), naming this app
+(aud "mcp:<APP_ID>"), the SHA-256 of this exact request body, and not yet expired; each token is used once. Without a
+configured key the server refuses every call (fail closed). Verification uses the `cryptography` library.
+
 Deliberately included for testing the platform's defences:
   - list_subscribers returns a subscriber whose note carries a prompt injection (an instruction to the assistant);
   - DEMO_EXTRA_TOOL=1 serves a tool that is not in the signed manifest (the platform must mark the server "changed");
   - DEMO_SSE=1 answers as an event stream and first sends the client a sampling request (the platform must ignore it).
 """
+import base64
+import hashlib
 import json
 import os
 import threading
@@ -34,6 +41,59 @@ SUBSCRIBERS = [
 ]
 _sessions = {}
 _lock = threading.Lock()
+APP_ID = os.environ.get("APP_ID", "mcp-demo")
+TOKEN_HEADER = "X-Platform-Token"
+SKEW_S, MAX_TTL_S = 30, 300
+_seen = {}                                  # jti -> exp: each token once
+
+
+def _b64d(s):
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def _platform_key():
+    raw = os.environ.get("PLATFORM_KEY", "").strip()
+    if not raw:
+        return None
+    from cryptography.hazmat.primitives import serialization
+    return serialization.load_pem_public_key(base64.b64decode(raw))
+
+
+def check_token(token, body, now=None):
+    """None when the platform sent this request, else why not."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    try:
+        key = _platform_key()
+    except Exception:  # noqa: BLE001
+        return "the platform key is not readable"
+    if key is None:
+        return "no platform key is configured: every call is refused"
+    if not token or token.count(".") != 1:
+        return "no platform token"
+    now = time.time() if now is None else now
+    try:
+        payload, sig = (_b64d(p) for p in token.split("."))
+        key.verify(sig, payload, ec.ECDSA(hashes.SHA256()))
+        c = json.loads(payload)
+    except (InvalidSignature, ValueError):
+        return "the platform token is not valid"
+    if c.get("aud") != "mcp:" + APP_ID:
+        return "the token is for another app"
+    if c.get("body") != hashlib.sha256(body).hexdigest():
+        return "the token is for another request"
+    iat, exp = c.get("iat"), c.get("exp")
+    if not isinstance(iat, int) or not isinstance(exp, int) or exp - iat > MAX_TTL_S or iat > now + SKEW_S \
+            or exp < now - SKEW_S:
+        return "the token has expired"
+    with _lock:
+        for j in [j for j, e in _seen.items() if e < now - SKEW_S]:
+            _seen.pop(j)
+        if c.get("jti") in _seen:
+            return "the token was already used"
+        _seen[c.get("jti")] = exp
+    return None
 
 
 def tools():
@@ -135,8 +195,12 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > MAX_BODY:
             return self._send(413, b'{"error": "body too large or empty"}')
+        raw = self.rfile.read(n)
+        why = check_token(self.headers.get(TOKEN_HEADER), raw)
+        if why:
+            return self._send(401, json.dumps({"error": why}).encode())
         try:
-            msg = json.loads(self.rfile.read(n))
+            msg = json.loads(raw)
         except ValueError:
             return self._send(400, json.dumps(_error(None, -32700, "parse error")).encode())
         reply, sid, code = handle(msg, self.headers.get("Mcp-Session-Id"))

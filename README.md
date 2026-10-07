@@ -5,9 +5,14 @@ A small edge app that offers [MCP](https://modelcontextprotocol.io) tools to a p
 - `mcp-manifest.json` declares the server (port, path, Service) and its tools, and marks which tools are read-only.
   The platform reads this file from the **signed commit** it deploys; the assistant gets exactly these tools. A tool
   not marked `read_only` runs only after a person approves it in the chat.
-- `server.py` is the MCP server: streamable HTTP, Python standard library only, no dependencies.
-- `app.yaml` + `kustomization.yaml` deploy it (namespace `mcp-demo`, a ClusterIP Service — nothing is exposed; the
-  platform reaches it through the cluster's API server).
+- `server.py` is the MCP server: streamable HTTP, Python, with the `cryptography` library only to check signatures.
+- A small Helm chart (`Chart.yaml`, `templates/`) deploys it: namespace `mcp-demo`, a ClusterIP Service. Nothing is
+  exposed; the platform reaches it through the cluster's API server.
+- **Only the platform may call it.** Every request must carry the platform's token (header `X-Platform-Token`): a
+  short-lived ECDSA P-256 signature by the platform's key. The token names this app and the SHA-256 of the exact
+  request body, and each token is accepted once. The platform's public key arrives as the chart value `platformKey`,
+  which `fleet.yaml` reads from the cluster (`${ .ClusterValues.platformMcpKey }`). Without a key, every call is
+  refused.
 
 | tool | kind | what |
 |---|---|---|

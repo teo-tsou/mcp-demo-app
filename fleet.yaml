@@ -1,5 +1,7 @@
-# Fleet creates the namespace (defaultNamespace); the manifests must not declare it themselves (Helm then refuses it
-# as one it does not own).
+# Fleet creates the namespace (defaultNamespace); the chart must not declare it itself.
 defaultNamespace: mcp-demo
-kustomize:
-  dir: .
+helm:
+  chart: .
+  values:
+    # the platform's key for this cluster, published by the platform on the cluster's Fleet object
+    platformKey: ${ .ClusterValues.platformMcpKey }

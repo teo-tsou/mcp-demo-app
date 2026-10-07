@@ -1,0 +1,3 @@
+# The platform's public key (base64 of its PEM): the server accepts only requests carrying the platform's token,
+# signed with this key. The deployer sets it (fleet.yaml: ${ .ClusterValues.platformMcpKey }); empty = every call refused.
+platformKey: ""
