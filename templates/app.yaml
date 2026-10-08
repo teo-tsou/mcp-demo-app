@@ -6,8 +6,8 @@ metadata:
 data:
   server.py: |-
 {{ .Files.Get "server.py" | indent 4 }}
-  mcp-manifest.json: |-
-{{ .Files.Get "mcp-manifest.json" | indent 4 }}
+  tools.json: |-
+{{ .Files.Get "tools.json" | indent 4 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -37,7 +37,7 @@ spec:
           image: docker.io/certbot/certbot@sha256:9626d72120577cf72da4fc7948806e9993598981720a4cbe04340a502468d67b  # v4.2.0
           command: ["python3", "/app/server.py"]
           env:
-            - {name: MANIFEST, value: /app/mcp-manifest.json}
+            - {name: MANIFEST, value: /app/tools.json}
             - {name: APP_ID, value: mcp-demo}
             - {name: PLATFORM_KEY, value: {{ .Values.platformKey | quote }}}
             - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
