@@ -5,3 +5,6 @@ helm:
   values:
     # the platform's key for this cluster, published by the platform on the cluster's Fleet object
     platformKey: ${ .ClusterValues.platformMcpKey }
+    # A model input: the deployer loads the chosen, signed version into a volume and names it here
+    # (ie_art_<app name>_<input key>). Empty until bound, and the reader below is then not rendered.
+    modelClaim: '${ get .ClusterValues "ie_art_inputs_demo_model" | default "" }'

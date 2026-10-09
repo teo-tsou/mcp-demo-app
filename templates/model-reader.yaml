@@ -1,0 +1,56 @@
+{{- if .Values.modelClaim }}
+# Reads the model input (read-only) and logs every file's SHA-256, so the deployer can check what the pod sees.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-reader
+  labels: {app.kubernetes.io/name: model-reader}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: model-reader}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: model-reader}
+      annotations:
+        claim: {{ .Values.modelClaim | quote }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: reader
+          image: docker.io/certbot/certbot@sha256:9626d72120577cf72da4fc7948806e9993598981720a4cbe04340a502468d67b  # v4.2.0 (python3)
+          command:
+            - python3
+            - -c
+            - |
+              import hashlib, os, time
+              for root, _, files in sorted(os.walk("/model")):
+                  for f in sorted(files):
+                      p = os.path.join(root, f)
+                      h = hashlib.sha256()
+                      with open(p, "rb") as fh:
+                          for b in iter(lambda: fh.read(1 << 20), b""):
+                              h.update(b)
+                      print("model-file", os.path.relpath(p, "/model"), h.hexdigest(), flush=True)
+              print("model-files-done", flush=True)
+              while True:
+                  time.sleep(3600)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          volumeMounts:
+            - {name: model, mountPath: /model, readOnly: true}
+      volumes:
+        - name: model
+          persistentVolumeClaim: {claimName: {{ .Values.modelClaim | quote }}, readOnly: true}
+{{- end }}

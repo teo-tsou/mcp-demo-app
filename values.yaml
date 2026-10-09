@@ -1,3 +1,5 @@
 # The platform's public key (base64 of its PEM): the server accepts only requests carrying the platform's token,
 # signed with this key. The deployer sets it (fleet.yaml: ${ .ClusterValues.platformMcpKey }); empty = every call refused.
 platformKey: ""
+# The model input's volume (see fleet.yaml). Mounted read-only by the reader; empty = no reader.
+modelClaim: ""
