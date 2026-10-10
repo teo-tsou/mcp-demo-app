@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "server": {"port": 8811, "path": "/mcp", "service": "mcp-demo"},
+  "server": {"port": 8811, "path": "/mcp", "service": "mcp-demo", "scheme": "https"},
   "tools": [
     {
       "name": "get_status",
